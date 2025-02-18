@@ -1,5 +1,6 @@
 import pulumi
 import pulumi_gcp as gcp
+import pulumi_kubernetes as k8s
 
 # Configuration
 config = pulumi.Config()
@@ -38,6 +39,11 @@ gke_cluster = gcp.container.Cluster(
     networking_mode="VPC_NATIVE",
     ip_allocation_policy={},
     resource_labels={"env": "test"},
+    addons_config=gcp.container.ClusterAddonsConfigArgs(
+        gcp_filestore_csi_driver_config=gcp.container.ClusterAddonsConfigGcpFilestoreCsiDriverConfigArgs(
+            enabled=True,
+        ),
+    ),
 )
 
 # Create a GKE Node Pool
@@ -46,7 +52,9 @@ gke_node_pool = gcp.container.NodePool(
     project=project,
     cluster=gke_cluster.id,
     location=region,
-    node_config={"machine_type": node_machine_type},
+    node_config=gcp.container.NodePoolNodeConfigArgs(
+        machine_type=node_machine_type,
+    ),
     initial_node_count=1,
 )
 
@@ -74,19 +82,66 @@ cloud_sql_instance = gcp.sql.DatabaseInstance(
     project=project,
     region=region,
     database_version="POSTGRES_15",
-    settings={
-        "tier": "db-f1-micro",
-        "backup_configuration": {
-            "enabled": True,
-            "start_time": "05:00",
-            "point_in_time_recovery_enabled": True,
-            "retained_backups": 7,
-        },
-        "ip_configuration": {
-            "private_network": network.id,
-            "require_ssl": True,
-        },
+    settings=gcp.sql.DatabaseInstanceSettingsArgs(
+        tier="db-f1-micro",
+        backup_configuration=gcp.sql.DatabaseInstanceSettingsBackupConfigurationArgs(
+            enabled=True,
+            start_time="05:00",
+            backup_retention_settings=gcp.sql.DatabaseInstanceSettingsBackupConfigurationBackupRetentionSettingsArgs(
+                retained_backups=7,
+            ),
+        ),
+        ip_configuration=gcp.sql.DatabaseInstanceSettingsIpConfigurationArgs(
+            private_network=network.id,
+            require_ssl=True,
+        ),
+    ),
+)
+
+###############################
+# Bonus: Kubernetes Resources
+# Create a Kubernetes Provider
+###############################
+
+k8s_provider = k8s.Provider(
+    "k8s-provider",
+    kubeconfig=gke_cluster.kube_config_raw,
+)
+
+# Create a Kubernetes Namespace
+hirundo_namespace = k8s.core.v1.Namespace(
+    "hirundo-namespace",
+    metadata={"name": "hirundo"},
+    opts=pulumi.ResourceOptions(provider=k8s_provider),
+)
+
+# Create a Kubernetes Secret
+k8s_secret = k8s.core.v1.Secret(
+    "k8s-secret",
+    metadata={"name": "hirundo-secret", "namespace": hirundo_namespace.metadata["name"]},
+    string_data={"example-key": "example-value"},
+    opts=pulumi.ResourceOptions(provider=k8s_provider),
+)
+
+# Create a Kubernetes ServiceAccount
+k8s_service_account = k8s.core.v1.ServiceAccount(
+    "k8s-service-account",
+    metadata={"name": "hirundo-sa", "namespace": hirundo_namespace.metadata["name"]},
+    opts=pulumi.ResourceOptions(provider=k8s_provider),
+)
+
+# Deploy a Helm Chart (e.g., NGINX)
+helm_chart = k8s.helm.v3.Release(
+    "nginx-helm-chart",
+    chart="nginx",
+    namespace=hirundo_namespace.metadata["name"],
+    repository_opts=k8s.helm.v3.RepositoryOptsArgs(
+        repo="https://charts.bitnami.com/bitnami",
+    ),
+    values={
+        "service": {"type": "ClusterIP"},
     },
+    opts=pulumi.ResourceOptions(provider=k8s_provider),
 )
 
 # Export outputs
@@ -94,3 +149,5 @@ pulumi.export("network_id", network.id)
 pulumi.export("subnetwork_id", subnetwork.id)
 pulumi.export("gke_cluster_id", gke_cluster.id)
 pulumi.export("cloud_sql_instance_id", cloud_sql_instance.id)
+pulumi.export("k8s_namespace", hirundo_namespace.metadata["name"])
+pulumi.export("helm_chart_status", helm_chart.status)

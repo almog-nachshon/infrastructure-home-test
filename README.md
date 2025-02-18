@@ -2,6 +2,10 @@
 
 This project defines and provisions Google Cloud infrastructure using Pulumi with Python. It includes a VPC, a subnetwork, a GKE cluster with GCFS enabled, and a Cloud SQL instance with a private IP and backups.
 
+![Architecture Diagram](docs/gcp_Hirundo_architecture.png)
+
+
+
 ## Table of Contents
 
 - [Requirements](#requirements)
