@@ -120,10 +120,10 @@ pulumi destroy
 
 ## Testing
 
-To run unit tests using Pulumi Mocks:
+To run unit tests using Pulumi Mocks with more verbose logs:
 
 ```sh
-pytest test_infra.py
+pytest test_infra.py -v
 ```
 
 ## Code
@@ -139,6 +139,19 @@ network = gcp.compute.Network(
     auto_create_subnetworks=False
 )
 ```
+
+## Bonus: Kubernetes Resources
+The following Kubernetes resources are created in the GKE cluster:
+- A namespace named `hirundo`.
+- A secret named `hirundo-secret`.
+- A ServiceAccount named `hirundo-sa`.
+- An NGINX Helm chart deployed to the `hirundo` namespace.
+
+To verify the Kubernetes resources:
+1. Connect to the GKE cluster:
+   ```bash
+   gcloud container clusters get-credentials <cluster-name> --region us-central1
+
 
 ## Topic
 
